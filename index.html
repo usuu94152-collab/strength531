@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Strength Log</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">5/3/1 Strength Records</p>
+        <h1>Strength Log</h1>
+      </div>
+      <div class="header-actions">
+        <button id="refreshButton" class="tiny-button" type="button">새로고침</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <nav class="view-tabs" aria-label="화면 선택">
+        <button class="active" type="button" data-view-tab="search">검색</button>
+        <button type="button" data-view-tab="weights">중량별</button>
+        <button type="button" data-view-tab="e1rm">e1RM</button>
+        <button type="button" data-view-tab="input">입력</button>
+      </nav>
+
+      <section class="records-panel search-panel app-view active" data-view="search">
+        <div class="panel-heading horizontal">
+          <div>
+            <h2>중량 검색</h2>
+            <p id="syncStatus">시트 데이터를 불러오는 중입니다.</p>
+          </div>
+          <div class="segmented" aria-label="종목 선택">
+            <button class="active" type="button" data-lift="Squat">Squat</button>
+            <button type="button" data-lift="Bench Press">Bench</button>
+            <button type="button" data-lift="Deadlift">Deadlift</button>
+          </div>
+        </div>
+
+        <div class="search-controls">
+          <label>
+            찾을 중량
+            <div class="search-input-row">
+              <input id="weightSearch" type="number" min="0" step="5" placeholder="예: 130" />
+              <select id="weightUnit" aria-label="중량 단위">
+                <option value="kg">kg</option>
+                <option value="lb">lb</option>
+              </select>
+              <button id="clearSearchButton" class="ghost-button" type="button">초기화</button>
+            </div>
+          </label>
+          <p id="searchRangeHint" class="search-hint">같은 중량 우선, 주변 기록 자동 포함</p>
+        </div>
+
+        <div id="searchSummary" class="result-grid"></div>
+
+        <div class="table-header table-header-spaced">
+          <h3 id="historyTitle">선택 종목 전체 기록</h3>
+          <span id="recordCount">0개</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th>중량</th>
+                <th>반복</th>
+                <th>e1RM</th>
+                <th>TM</th>
+                <th>출처</th>
+                <th>메모</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="records-panel app-view" data-view="weights">
+        <div class="panel-heading horizontal">
+          <div class="table-header stretch-header">
+            <h3 id="weightGroupsTitle">중량별 기록</h3>
+            <span id="weightGroupCount">0개</span>
+          </div>
+          <div class="segmented" aria-label="중량별 종목 선택">
+            <button class="active" type="button" data-lift="Squat">Squat</button>
+            <button type="button" data-lift="Bench Press">Bench</button>
+            <button type="button" data-lift="Deadlift">Deadlift</button>
+          </div>
+        </div>
+        <div id="weightGroups" class="weight-grid"></div>
+      </section>
+
+      <section class="app-view e1rm-view" data-view="e1rm">
+        <div class="summary-grid" aria-label="e1RM 요약">
+          <article class="metric">
+            <span>Squat 최고 e1RM</span>
+            <strong id="squatBest">-</strong>
+          </article>
+          <article class="metric">
+            <span>Bench 최고 e1RM</span>
+            <strong id="benchBest">-</strong>
+          </article>
+          <article class="metric">
+            <span>Deadlift 최고 e1RM</span>
+            <strong id="deadliftBest">-</strong>
+          </article>
+          <article class="metric">
+            <span>최근 리프트</span>
+            <strong id="latestRecord">-</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="input-panel app-view" data-view="input">
+        <div class="panel-heading">
+          <h2>리프트 기록 추가</h2>
+          <p>앱 입력분은 이 브라우저에 누적됩니다.</p>
+        </div>
+
+        <form id="strengthForm" class="stacked-form">
+          <div class="form-row">
+            <label>
+              날짜
+              <input id="strengthDate" type="date" required />
+            </label>
+            <label>
+              종목
+              <select id="strengthMovement" required>
+                <option value="Squat">Squat</option>
+                <option value="Bench Press">Bench Press</option>
+                <option value="Deadlift">Deadlift</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              중량 kg
+              <input id="strengthWeight" type="number" min="0" step="0.1" required />
+            </label>
+            <label>
+              반복수
+              <input id="strengthReps" type="number" min="1" step="1" required />
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              TM kg
+              <input id="strengthTm" type="number" min="0" step="0.1" />
+            </label>
+            <label>
+              메모
+              <input id="strengthNote" type="text" />
+            </label>
+          </div>
+          <button type="submit">기록 추가</button>
+        </form>
+      </section>
+
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
