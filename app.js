@@ -1,14 +1,12 @@
 const SHEET_ID = "1vJrBXlVso_zSf7xR71I91cK2nswdYe9KoUi0udtDnUo";
+const APPS_SCRIPT_URL =
+  "https://script.google.com/macros/s/AKfycbxWgV__IgjjrtbRQ7F-N3-UzsQWHY94ihQ1VcMFB3qcVAGme8AKWlCVjkIh9RYQSmqR/exec";
 const LIFT_SHEETS = ["Squat", "Bench Press", "Deadlift"];
-const STORAGE_KEYS = {
-  strength: "strength-log.local-strength",
-};
 
 const state = {
   selectedLift: "Squat",
   activeView: "search",
   sheetRecords: [],
-  localStrength: [],
   lastSync: null,
 };
 
@@ -17,7 +15,6 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 document.addEventListener("DOMContentLoaded", () => {
   setDefaultDates();
-  loadLocalRecords();
   bindEvents();
   applyInitialFilters();
   updateSearchStep();
@@ -110,16 +107,15 @@ function updateSearchStep() {
 }
 
 function setDefaultDates() {
-  const today = new Date().toISOString().slice(0, 10);
-  $("#strengthDate").value = today;
+  $("#strengthDate").value = getLocalDateValue();
 }
 
-function loadLocalRecords() {
-  state.localStrength = JSON.parse(localStorage.getItem(STORAGE_KEYS.strength) || "[]");
-}
-
-function saveLocalRecords() {
-  localStorage.setItem(STORAGE_KEYS.strength, JSON.stringify(state.localStrength));
+function getLocalDateValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function refreshSheetData() {
@@ -230,13 +226,14 @@ function normalizeSheetRow(row, sheetName) {
   };
 }
 
-function addStrengthRecord(event) {
+async function addStrengthRecord(event) {
   event.preventDefault();
 
+  const form = event.currentTarget;
+  const submitButton = form.querySelector("button[type='submit']");
   const weight = toNumber($("#strengthWeight").value);
   const reps = toNumber($("#strengthReps").value);
   const record = {
-    id: `app-${Date.now()}`,
     date: $("#strengthDate").value,
     movement: $("#strengthMovement").value,
     weight,
@@ -247,12 +244,51 @@ function addStrengthRecord(event) {
     source: "app",
   };
 
-  state.localStrength.push(record);
-  saveLocalRecords();
-  $("#strengthForm").reset();
-  setDefaultDates();
-  $("#strengthMovement").value = state.selectedLift;
-  render();
+  submitButton.disabled = true;
+  submitButton.textContent = "전송 중";
+  $("#syncStatus").textContent = "구글 시트에 기록하는 중입니다.";
+  $("#syncStatus").classList.remove("error-text");
+
+  try {
+    await submitStrengthRecord(record);
+    state.selectedLift = record.movement;
+    updateLiftButtons();
+    $("#weightSearch").value = record.weight;
+    $("#weightUnit").value = "kg";
+    $("#strengthForm").reset();
+    setDefaultDates();
+    $("#strengthMovement").value = state.selectedLift;
+    updateSearchStep();
+    setActiveView("search");
+    $("#syncStatus").textContent = "기록했습니다. 시트를 다시 불러오는 중입니다.";
+    await wait(1800);
+    await refreshSheetData();
+  } catch (error) {
+    $("#syncStatus").textContent = `시트 기록 실패: ${error.message}`;
+    $("#syncStatus").classList.add("error-text");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "기록 추가";
+  }
+}
+
+async function submitStrengthRecord(record) {
+  const body = new URLSearchParams();
+  Object.entries(record).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      body.append(key, String(value));
+    }
+  });
+
+  await fetch(APPS_SCRIPT_URL, {
+    method: "POST",
+    mode: "no-cors",
+    body,
+  });
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function render() {
@@ -268,9 +304,7 @@ function render() {
 }
 
 function getStrengthRecords() {
-  return [...state.sheetRecords, ...state.localStrength].sort((a, b) =>
-    b.date.localeCompare(a.date),
-  );
+  return [...state.sheetRecords].sort((a, b) => b.date.localeCompare(a.date));
 }
 
 function getSearchValue() {
@@ -341,8 +375,7 @@ function renderStatus() {
   }
 
   const sheetCount = state.sheetRecords.length;
-  const appCount = state.localStrength.length;
-  $("#syncStatus").textContent = `시트 ${sheetCount}개, 앱 입력 ${appCount}개 · ${state.lastSync.toLocaleTimeString(
+  $("#syncStatus").textContent = `시트 ${sheetCount}개 · ${state.lastSync.toLocaleTimeString(
     "ko-KR",
     { hour: "2-digit", minute: "2-digit" },
   )} 동기화`;
