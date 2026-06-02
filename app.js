@@ -32,6 +32,12 @@ const state = {
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+const setText = (selector, value) => {
+  const element = $(selector);
+  if (element) {
+    element.textContent = value;
+  }
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   setDefaultDates();
@@ -126,13 +132,17 @@ function updateLiftButtons() {
 
 function updateSearchStep() {
   const input = $("#weightSearch");
-  const unit = $("#weightUnit").value;
+  if (!input) {
+    return;
+  }
+
+  const unit = getSearchUnit();
   const kgStep = state.selectedLift === "Bench Press" ? 2.5 : 5;
 
   input.step = unit === "lb" ? "5" : String(kgStep);
   input.placeholder = unit === "lb" ? "295" : kgStep === 2.5 ? "97.5" : "130";
-  $("#searchUnitLabel").textContent = unit;
-  $("#searchRangeHint").textContent = `같은 중량 우선 · ${formatKg(getAutoTolerance())} 주변 기록 포함`;
+  setText("#searchUnitLabel", unit);
+  setText("#searchRangeHint", `같은 중량 우선 · ${formatKg(getAutoTolerance())} 주변 기록 포함`);
   renderConversionHint();
 }
 
@@ -351,7 +361,7 @@ function getRawSearchValue() {
 }
 
 function getSearchUnit() {
-  return $("#weightUnit").value;
+  return $("#weightUnit")?.value || "kg";
 }
 
 function getSearchResults(records) {
@@ -764,6 +774,11 @@ function renderTable(records) {
 }
 
 function renderConversionHint() {
+  const conversionHint = $("#conversionHint");
+  if (!conversionHint) {
+    return;
+  }
+
   const target = getSearchValue();
   const unit = getSearchUnit();
   const hint = target
@@ -771,7 +786,7 @@ function renderConversionHint() {
       ? `≈ <span>${formatKg(target)}</span>`
       : `≈ <span>${formatNearestLb(target)}</span>`
     : "≈ -";
-  $("#conversionHint").innerHTML = hint;
+  conversionHint.innerHTML = hint;
 }
 
 function renderE1rmPreview() {
