@@ -2,12 +2,32 @@ const SHEET_ID = "1vJrBXlVso_zSf7xR71I91cK2nswdYe9KoUi0udtDnUo";
 const APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbxWgV__IgjjrtbRQ7F-N3-UzsQWHY94ihQ1VcMFB3qcVAGme8AKWlCVjkIh9RYQSmqR/exec";
 const LIFT_SHEETS = ["Squat", "Bench Press", "Deadlift"];
+const VIEW_META = {
+  search: { eyebrow: "검색 · WEIGHT", title: "중량 검색" },
+  weights: { eyebrow: "기록 · BY WEIGHT", title: "중량별" },
+  cycle: { eyebrow: "사이클 · TM", title: "중량표" },
+  input: { eyebrow: "새 기록 · NEW ENTRY", title: "기록 추가" },
+};
+const TOP_SET_PERCENTAGES = [85, 90, 95];
+const FSL_RULES = {
+  85: "70% x 5x10",
+  90: "65-70% x 5x10",
+  95: "60-65% x 5x8-10",
+};
+const TM_STORAGE_KEY = "strength-log-tm-overrides";
+const WAVE_PLAN = {
+  1: { early: 85, late: 90 },
+  2: { early: 95, late: 85 },
+  3: { early: 90, late: 95 },
+  4: { early: null, late: null },
+};
 
 const state = {
   selectedLift: "Squat",
   activeView: "search",
   sheetRecords: [],
   lastSync: null,
+  tmOverrides: loadTmOverrides(),
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -33,6 +53,8 @@ function bindEvents() {
     updateSearchStep();
     render();
   });
+  $("#strengthWeight").addEventListener("input", renderE1rmPreview);
+  $("#strengthReps").addEventListener("input", renderE1rmPreview);
   $("#strengthForm").addEventListener("submit", addStrengthRecord);
 
   $$("[data-view-tab]").forEach((button) => {
@@ -53,7 +75,12 @@ function bindEvents() {
 }
 
 function setActiveView(view) {
+  if (view === "e1rm") {
+    view = "cycle";
+  }
+
   state.activeView = view;
+
   $$("[data-view-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.viewTab === view);
   });
@@ -66,7 +93,8 @@ function applyInitialFilters() {
   const params = new URLSearchParams(window.location.search);
   const lift = params.get("lift");
   const weight = params.get("weight");
-  const view = params.get("view") === "progress" ? "e1rm" : params.get("view");
+  const viewParam = params.get("view");
+  const view = viewParam === "progress" || viewParam === "e1rm" ? "cycle" : viewParam;
   const unit = params.get("unit");
 
   if (LIFT_SHEETS.includes(lift)) {
@@ -85,7 +113,7 @@ function applyInitialFilters() {
 
   if (view === "crossfit") {
     setActiveView("search");
-  } else if (["search", "weights", "e1rm", "input"].includes(view)) {
+  } else if (["search", "weights", "cycle", "input"].includes(view)) {
     setActiveView(view);
   }
 }
@@ -102,8 +130,10 @@ function updateSearchStep() {
   const kgStep = state.selectedLift === "Bench Press" ? 2.5 : 5;
 
   input.step = unit === "lb" ? "5" : String(kgStep);
-  input.placeholder = unit === "lb" ? "예: 295" : `예: ${kgStep === 2.5 ? "97.5" : "130"}`;
+  input.placeholder = unit === "lb" ? "295" : kgStep === 2.5 ? "97.5" : "130";
+  $("#searchUnitLabel").textContent = unit;
   $("#searchRangeHint").textContent = `같은 중량 우선 · ${formatKg(getAutoTolerance())} 주변 기록 포함`;
+  renderConversionHint();
 }
 
 function setDefaultDates() {
@@ -297,10 +327,14 @@ function render() {
   const searchedRecords = getSearchResults(selectedRecords);
 
   renderSummary(records);
+  renderCycleBanner(records);
+  renderCycleWeights(records);
   renderStatus();
   renderSearchSummary(selectedRecords, searchedRecords);
   renderWeightGroups(selectedRecords);
   renderTable(searchedRecords);
+  renderConversionHint();
+  renderE1rmPreview();
 }
 
 function getStrengthRecords() {
@@ -327,22 +361,15 @@ function getSearchResults(records) {
     return records;
   }
 
-  const exactMatches = records.filter((record) => record.weight && Math.abs(record.weight - target) < 0.05);
-
-  if (exactMatches.length) {
-    return exactMatches;
-  }
-
   const tolerance = getAutoTolerance();
 
-  return records.filter((record) => {
-    if (!record.weight) {
-      return false;
-    }
-
-    const diff = Math.abs(record.weight - target);
-    return diff <= tolerance;
-  });
+  return records
+    .filter((record) => record.weight && Math.abs(record.weight - target) <= tolerance)
+    .sort((a, b) => {
+      const diffA = Math.abs(a.weight - target);
+      const diffB = Math.abs(b.weight - target);
+      return diffA - diffB || b.date.localeCompare(a.date);
+    });
 }
 
 function getAutoTolerance() {
@@ -350,23 +377,253 @@ function getAutoTolerance() {
 }
 
 function renderSummary(records) {
-  const bestByLift = Object.fromEntries(
-    LIFT_SHEETS.map((lift) => [
-      lift,
-      records
-        .filter((record) => record.movement === lift)
-        .reduce((best, record) => Math.max(best, record.e1rm || 0), 0),
-    ]),
-  );
+  const bestByLift = Object.fromEntries(LIFT_SHEETS.map((lift) => [lift, getBestRecord(records, lift)]));
+  const firstByLift = Object.fromEntries(LIFT_SHEETS.map((lift) => [lift, getFirstRecord(records, lift)]));
 
-  $("#squatBest").textContent = formatKg(bestByLift.Squat);
-  $("#benchBest").textContent = formatKg(bestByLift["Bench Press"]);
-  $("#deadliftBest").textContent = formatKg(bestByLift.Deadlift);
+  renderBestLift("squat", bestByLift.Squat, firstByLift.Squat);
+  renderBestLift("bench", bestByLift["Bench Press"], firstByLift["Bench Press"]);
+  renderBestLift("deadlift", bestByLift.Deadlift, firstByLift.Deadlift);
 
   const latest = records[0];
   $("#latestRecord").textContent = latest
     ? `${formatShortDate(latest.date)} ${shortMovement(latest.movement)}`
     : "-";
+}
+
+function renderBestLift(prefix, record, firstRecord) {
+  $(`#${prefix}Best`).textContent = record ? formatKg(record.e1rm) : "-";
+  $(`#${prefix}Meta`).textContent = record
+    ? `${formatKg(record.weight)} x ${record.reps || "-"} · TM ${record.tm ? formatKg(record.tm) : "-"} · ${formatDotDate(record.date)}`
+    : "기록 없음";
+
+  const deltaElement = $(`#${prefix}Delta`);
+  if (!deltaElement) {
+    return;
+  }
+
+  const delta = record && firstRecord ? roundOne(record.e1rm - firstRecord.e1rm) : 0;
+  deltaElement.textContent = record && firstRecord ? formatDeltaKg(delta) : "-";
+  deltaElement.classList.toggle("negative", delta < 0);
+  deltaElement.classList.toggle("flat", Math.abs(delta) < 0.05);
+}
+
+function getBestRecord(records, lift) {
+  return records
+    .filter((record) => record.movement === lift)
+    .reduce((best, record) => (!best || (record.e1rm || 0) > (best.e1rm || 0) ? record : best), null);
+}
+
+function getFirstRecord(records, lift) {
+  return records
+    .filter((record) => record.movement === lift && record.e1rm)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+}
+
+function renderCycleBanner(records) {
+  const { cycle, week } = computeCycle(records);
+  const cycleLabel = $("#cycleLabel");
+  if (cycleLabel) {
+    cycleLabel.textContent = `Cycle ${cycle} · Week ${week}`;
+  }
+  $$("[data-cycle-dot]").forEach((dot, index) => {
+    dot.classList.toggle("filled", index < week);
+  });
+  $$("[data-cycle-view-dot]").forEach((dot, index) => {
+    dot.classList.toggle("filled", index < week);
+  });
+}
+
+function computeCycle(records) {
+  const tmRecords = records
+    .filter((record) => record.date && record.tm)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!tmRecords.length) {
+    return { cycle: 1, week: 1 };
+  }
+
+  const anchorDate = tmRecords[0].date;
+  const lastTmByLift = {};
+  const boundaryDates = [];
+
+  tmRecords.forEach((record) => {
+    const previousTm = lastTmByLift[record.movement];
+    if (previousTm && record.tm > previousTm) {
+      boundaryDates.push(record.date);
+    }
+    lastTmByLift[record.movement] = record.tm;
+  });
+
+  const uniqueBoundaries = Array.from(new Set(boundaryDates)).sort();
+  const cycle = 1 + uniqueBoundaries.length;
+  const cycleStart = uniqueBoundaries.at(-1) || anchorDate;
+  const days = Math.max(0, Math.floor((parseLocalDate(getLocalDateValue()) - parseLocalDate(cycleStart)) / 86400000));
+  const week = Math.min(4, Math.floor(days / 7) + 1);
+
+  return { cycle, week };
+}
+
+function renderCycleWeights(records) {
+  const { week } = computeCycle(records);
+  const percent = getTodayTopSetPercent(week);
+
+  const latestTmByLift = getLatestTmByLift(records);
+  $("#cycleWeights").innerHTML = LIFT_SHEETS.map((lift) => {
+    const tmRecord = latestTmByLift[lift];
+    const overrideTm = state.tmOverrides[lift] || 0;
+    const tm = overrideTm || tmRecord?.tm || 0;
+    const tmSource = overrideTm
+      ? "앱에서 수정한 TM"
+      : tmRecord
+        ? `${formatDotDate(tmRecord.date)} TM 기준`
+        : "TM 기록 없음";
+    const percentages = TOP_SET_PERCENTAGES.map((item) => {
+      const weight = roundTrainingWeight(tm * (item / 100));
+      const isToday = item === percent;
+      return `
+        <button class="percent-chip ${isToday ? "active" : ""}" type="button" data-cycle-lift="${lift}" data-cycle-weight="${weight}" ${tm ? "" : "disabled"}>
+          <span>${item}%</span>
+          <strong>${tm ? formatKg(weight) : "-"}</strong>
+        </button>
+      `;
+    }).join("");
+
+    return `
+      <article class="cycle-weight-card">
+        <div class="cycle-weight-head">
+          <div>
+            <span>${koreanMovement(lift)}</span>
+            <small>${escapeHtml(shortMovement(lift))}</small>
+          </div>
+          <strong>${tm ? formatKg(tm) : "-"}</strong>
+        </div>
+        <div class="tm-edit-row">
+          <input class="tm-input" type="number" min="0" step="5" value="${tm || ""}" data-tm-input="${lift}" aria-label="${koreanMovement(lift)} TM" />
+          <button class="tm-save-button" type="button" data-tm-save="${lift}">TM 저장</button>
+        </div>
+        <div class="percent-grid">${percentages}</div>
+        <div class="fsl-row">
+          <span>FSL</span>
+          <strong>${percent ? getFslText(tm, percent) : "디로드 또는 보조운동"}</strong>
+        </div>
+        <p>${tmSource}</p>
+      </article>
+    `;
+  }).join("");
+
+  $$("[data-tm-save]").forEach((button) => {
+    button.addEventListener("click", () => {
+      saveTmOverride(button.dataset.tmSave);
+    });
+  });
+
+  $$("[data-tm-input]").forEach((input) => {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        saveTmOverride(input.dataset.tmInput);
+      }
+    });
+  });
+
+  $$("[data-cycle-weight]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedLift = button.dataset.cycleLift;
+      $("#weightSearch").value = button.dataset.cycleWeight;
+      $("#weightUnit").value = "kg";
+      updateLiftButtons();
+      updateSearchStep();
+      setActiveView("search");
+      render();
+    });
+  });
+}
+
+function saveTmOverride(lift) {
+  const input = $(`[data-tm-input="${cssEscape(lift)}"]`);
+  const tm = roundTrainingWeight(toNumber(input.value));
+
+  if (!tm) {
+    delete state.tmOverrides[lift];
+  } else {
+    state.tmOverrides[lift] = tm;
+  }
+
+  saveTmOverrides();
+  render();
+}
+
+function getLatestTmByLift(records) {
+  return Object.fromEntries(
+    LIFT_SHEETS.map((lift) => [
+      lift,
+      records
+        .filter((record) => record.movement === lift && record.tm)
+        .sort((a, b) => b.date.localeCompare(a.date))[0],
+    ]),
+  );
+}
+
+function getTodayTopSetPercent(week) {
+  const plan = WAVE_PLAN[week];
+  if (!plan) {
+    return null;
+  }
+
+  const day = new Date().getDay();
+  if (day >= 1 && day <= 3) {
+    return plan.early;
+  }
+  if (day >= 4 && day <= 6) {
+    return plan.late;
+  }
+  return plan.early;
+}
+
+function getFslText(tm, percent) {
+  if (!tm) {
+    return "-";
+  }
+
+  if (percent === 85) {
+    return `${formatKg(roundTrainingWeight(tm * 0.7))} · ${FSL_RULES[percent]}`;
+  }
+  if (percent === 90) {
+    return `${formatKg(roundTrainingWeight(tm * 0.65))}-${formatKg(roundTrainingWeight(tm * 0.7))} · ${FSL_RULES[percent]}`;
+  }
+  if (percent === 95) {
+    return `${formatKg(roundTrainingWeight(tm * 0.6))}-${formatKg(roundTrainingWeight(tm * 0.65))} · ${FSL_RULES[percent]}`;
+  }
+  return "-";
+}
+
+function loadTmOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem(TM_STORAGE_KEY) || "{}");
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveTmOverrides() {
+  localStorage.setItem(TM_STORAGE_KEY, JSON.stringify(state.tmOverrides));
+}
+
+function getPrRecordIds(records) {
+  const bestByLift = {};
+  const ids = new Set();
+
+  [...records]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .forEach((record) => {
+      const best = bestByLift[record.movement] || 0;
+      if ((record.e1rm || 0) > best) {
+        ids.add(record.id);
+        bestByLift[record.movement] = record.e1rm || 0;
+      }
+    });
+
+  return ids;
 }
 
 function renderStatus() {
@@ -389,16 +646,16 @@ function renderSearchSummary(selectedRecords, searchedRecords) {
   const latest = records[0];
 
   const title = target
-    ? `${state.selectedLift} ${formatSearchWeight(rawTarget, searchUnit, target)} 검색 결과`
-    : `${state.selectedLift} 전체 기록`;
+    ? `${koreanMovement(state.selectedLift)} ${formatSearchWeight(rawTarget, searchUnit, target)} 검색 결과`
+    : `${koreanMovement(state.selectedLift)} 전체 기록`;
   $("#historyTitle").textContent = title;
 
   const summaryItems = target
     ? [
         {
           label: "최근 수행",
-          value: latest ? `${formatDisplayWeight(latest.weight, searchUnit)} x ${latest.reps}` : "-",
-          detail: latest ? `${latest.date} · 검색 ${records.length}개` : "기록 없음",
+          value: latest ? formatDisplayWeight(latest.weight, searchUnit) : "-",
+          detail: latest ? `${latest.reps || "-"}회 · ${latest.date} · 검색 ${records.length}개` : "기록 없음",
         },
         {
           label: searchUnit === "lb" ? "킬로그램 환산" : "파운드 환산",
@@ -414,8 +671,8 @@ function renderSearchSummary(selectedRecords, searchedRecords) {
         },
         {
           label: "최근 수행",
-          value: latest ? `${formatDisplayWeight(latest.weight, searchUnit)} x ${latest.reps}` : "-",
-          detail: latest ? latest.date : "기록 없음",
+          value: latest ? formatDisplayWeight(latest.weight, searchUnit) : "-",
+          detail: latest ? `${latest.reps || "-"}회 · ${latest.date}` : "기록 없음",
         },
       ];
 
@@ -458,7 +715,7 @@ function renderWeightGroups(records) {
 
   const sortedGroups = Array.from(groups.values()).sort((a, b) => b.weight - a.weight);
   $("#weightGroupCount").textContent = `${sortedGroups.length}개`;
-  $("#weightGroupsTitle").textContent = `${state.selectedLift} 중량별 기록`;
+  $("#weightGroupsTitle").textContent = `${koreanMovement(state.selectedLift)} 중량별 기록`;
   $("#weightGroups").innerHTML = sortedGroups.length
     ? sortedGroups
         .map(
@@ -488,21 +745,39 @@ function renderTable(records) {
   $("#recordCount").textContent = `${records.length}개`;
   $("#recordsTable").innerHTML = records.length
     ? records
-        .map(
-          (record) => `
-        <tr>
-          <td>${escapeHtml(record.date)}</td>
-          <td><strong>${record.weight ? formatKg(record.weight) : "-"}</strong></td>
-          <td>${record.reps || "-"}</td>
-          <td>${formatKg(record.e1rm)}</td>
-          <td>${record.tm ? formatKg(record.tm) : "-"}</td>
-          <td><span class="source-pill source-${record.source}">${record.source === "sheet" ? "Sheet" : "App"}</span></td>
-          <td>${escapeHtml(record.note || "")}</td>
-        </tr>
-      `,
-        )
+        .map((record) => {
+          const target = getSearchValue();
+          const isExact = target && Math.abs(record.weight - target) < 0.05;
+          return `
+            <tr class="${isExact ? "exact-row" : ""}">
+              <td><span class="record-date">${formatShortDate(record.date)}</span></td>
+              <td class="record-set">
+                <strong>${formatDisplayWeight(record.weight, getSearchUnit())} x ${record.reps || "-"}</strong>
+                <span>${escapeHtml(record.note || koreanMovement(record.movement))}</span>
+              </td>
+              <td><span class="record-e1rm">${formatKg(record.e1rm)}</span></td>
+            </tr>
+          `;
+        })
         .join("")
-    : `<tr><td colspan="7">조건에 맞는 기록이 없습니다.</td></tr>`;
+    : `<tr><td colspan="3">조건에 맞는 기록이 없습니다.</td></tr>`;
+}
+
+function renderConversionHint() {
+  const target = getSearchValue();
+  const unit = getSearchUnit();
+  const hint = target
+    ? unit === "lb"
+      ? `≈ <span>${formatKg(target)}</span>`
+      : `≈ <span>${formatNearestLb(target)}</span>`
+    : "≈ -";
+  $("#conversionHint").innerHTML = hint;
+}
+
+function renderE1rmPreview() {
+  const weight = toNumber($("#strengthWeight").value);
+  const reps = toNumber($("#strengthReps").value);
+  $("#e1rmPreview").textContent = weight && reps ? formatKg(roundOne(weight * (1 + reps / 30))) : "-";
 }
 
 function toNumber(value) {
@@ -512,6 +787,10 @@ function toNumber(value) {
 
 function roundOne(value) {
   return Math.round(value * 10) / 10;
+}
+
+function roundTrainingWeight(value) {
+  return Math.round(value / 5) * 5;
 }
 
 function formatKg(value) {
@@ -544,6 +823,14 @@ function formatNearestLb(value) {
   return value ? `약 ${nearestLb(value)}lb` : "-";
 }
 
+function formatDeltaKg(value) {
+  if (Math.abs(value) < 0.05) {
+    return "+0kg";
+  }
+
+  return value > 0 ? `+${formatKg(value)}` : formatKg(value);
+}
+
 function lbToKg(value) {
   return roundOne(value * 0.45359237);
 }
@@ -552,8 +839,34 @@ function formatShortDate(value) {
   return value.slice(5).replace("-", ".");
 }
 
+function formatDotDate(value) {
+  return value.replaceAll("-", ".");
+}
+
 function shortMovement(value) {
   return value === "Bench Press" ? "Bench" : value;
+}
+
+function koreanMovement(value) {
+  if (value === "Squat") {
+    return "스쿼트";
+  }
+  if (value === "Bench Press") {
+    return "벤치";
+  }
+  if (value === "Deadlift") {
+    return "데드리프트";
+  }
+  return value;
+}
+
+function parseLocalDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function cssEscape(value) {
+  return window.CSS?.escape ? CSS.escape(value) : String(value).replaceAll('"', '\\"');
 }
 
 function escapeHtml(value) {

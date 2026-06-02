@@ -9,8 +9,9 @@
   <body>
     <header class="app-header">
       <div>
-        <p class="eyebrow">5/3/1 Strength Records</p>
-        <h1>Strength Log</h1>
+        <p id="viewEyebrow" class="eyebrow">5/3/1 Strength Records</p>
+        <h1 id="viewTitle">Strength Log</h1>
+        <p id="syncStatus" class="sync-status">시트 데이터를 불러오는 중입니다.</p>
       </div>
       <div class="header-actions">
         <button id="refreshButton" class="tiny-button" type="button">새로고침</button>
@@ -18,39 +19,34 @@
     </header>
 
     <main class="app-shell">
-      <nav class="view-tabs" aria-label="화면 선택">
-        <button class="active" type="button" data-view-tab="search">검색</button>
-        <button type="button" data-view-tab="weights">중량별</button>
-        <button type="button" data-view-tab="e1rm">e1RM</button>
-        <button type="button" data-view-tab="input">입력</button>
-      </nav>
-
       <section class="records-panel search-panel app-view active" data-view="search">
-        <div class="panel-heading horizontal">
-          <div>
-            <h2>중량 검색</h2>
-            <p id="syncStatus">시트 데이터를 불러오는 중입니다.</p>
-          </div>
+        <div class="filter-row">
           <div class="segmented" aria-label="종목 선택">
-            <button class="active" type="button" data-lift="Squat">Squat</button>
-            <button type="button" data-lift="Bench Press">Bench</button>
-            <button type="button" data-lift="Deadlift">Deadlift</button>
+            <button class="active" type="button" data-lift="Squat">스쿼트</button>
+            <button type="button" data-lift="Bench Press">벤치</button>
+            <button type="button" data-lift="Deadlift">데드리프트</button>
           </div>
         </div>
 
         <div class="search-controls">
-          <label>
-            찾을 중량
-            <div class="search-input-row">
-              <input id="weightSearch" type="number" min="0" step="5" placeholder="예: 130" />
-              <select id="weightUnit" aria-label="중량 단위">
+          <label class="search-card">
+            <span class="search-card-top">
+              <span>찾을 중량</span>
+              <select id="weightUnit" class="unit-select" aria-label="중량 단위">
                 <option value="kg">kg</option>
                 <option value="lb">lb</option>
               </select>
-              <button id="clearSearchButton" class="ghost-button" type="button">초기화</button>
+            </span>
+            <div class="search-input-row">
+              <input id="weightSearch" type="number" min="0" step="5" placeholder="예: 130" />
+              <span id="searchUnitLabel">kg</span>
+              <span id="conversionHint" class="conversion-hint">≈ -</span>
             </div>
           </label>
-          <p id="searchRangeHint" class="search-hint">같은 중량 우선, 주변 기록 자동 포함</p>
+          <div class="hint-row">
+            <p id="searchRangeHint" class="search-hint">같은 중량 우선, 주변 기록 자동 포함</p>
+            <button id="clearSearchButton" class="link-button" type="button">초기화</button>
+          </div>
         </div>
 
         <div id="searchSummary" class="result-grid"></div>
@@ -64,12 +60,8 @@
             <thead>
               <tr>
                 <th>날짜</th>
-                <th>중량</th>
-                <th>반복</th>
+                <th>중량 × 반복</th>
                 <th>e1RM</th>
-                <th>TM</th>
-                <th>출처</th>
-                <th>메모</th>
               </tr>
             </thead>
             <tbody id="recordsTable"></tbody>
@@ -84,33 +76,60 @@
             <span id="weightGroupCount">0개</span>
           </div>
           <div class="segmented" aria-label="중량별 종목 선택">
-            <button class="active" type="button" data-lift="Squat">Squat</button>
-            <button type="button" data-lift="Bench Press">Bench</button>
-            <button type="button" data-lift="Deadlift">Deadlift</button>
+            <button class="active" type="button" data-lift="Squat">스쿼트</button>
+            <button type="button" data-lift="Bench Press">벤치</button>
+            <button type="button" data-lift="Deadlift">데드리프트</button>
           </div>
         </div>
         <div id="weightGroups" class="weight-grid"></div>
       </section>
 
-      <section class="app-view e1rm-view" data-view="e1rm">
+      <section class="app-view cycle-view" data-view="cycle">
+        <div class="section-header">
+          <h3>TM · 퍼센트 중량</h3>
+          <span>5kg 반올림</span>
+        </div>
+        <div id="cycleWeights" class="cycle-weight-list"></div>
+
+        <div class="section-header">
+          <h3>PR · 최고 e1RM</h3>
+        </div>
         <div class="summary-grid" aria-label="e1RM 요약">
-          <article class="metric">
-            <span>Squat 최고 e1RM</span>
-            <strong id="squatBest">-</strong>
+          <article class="metric pr-card">
+            <div>
+              <span>스쿼트</span>
+              <small>Squat</small>
+              <p id="squatMeta">-</p>
+            </div>
+            <div class="pr-number">
+              <strong id="squatBest">-</strong>
+              <em id="squatDelta">-</em>
+            </div>
           </article>
-          <article class="metric">
-            <span>Bench 최고 e1RM</span>
-            <strong id="benchBest">-</strong>
+          <article class="metric pr-card">
+            <div>
+              <span>벤치</span>
+              <small>Bench Press</small>
+              <p id="benchMeta">-</p>
+            </div>
+            <div class="pr-number">
+              <strong id="benchBest">-</strong>
+              <em id="benchDelta">-</em>
+            </div>
           </article>
-          <article class="metric">
-            <span>Deadlift 최고 e1RM</span>
-            <strong id="deadliftBest">-</strong>
-          </article>
-          <article class="metric">
-            <span>최근 리프트</span>
-            <strong id="latestRecord">-</strong>
+          <article class="metric pr-card">
+            <div>
+              <span>데드리프트</span>
+              <small>Deadlift</small>
+              <p id="deadliftMeta">-</p>
+            </div>
+            <div class="pr-number">
+              <strong id="deadliftBest">-</strong>
+              <em id="deadliftDelta">-</em>
+            </div>
           </article>
         </div>
+
       </section>
 
       <section class="input-panel app-view" data-view="input">
@@ -137,12 +156,16 @@
           <div class="form-row">
             <label>
               중량 kg
-              <input id="strengthWeight" type="number" min="0" step="0.1" required />
+              <input id="strengthWeight" type="number" min="0" step="0.1" placeholder="145" required />
             </label>
             <label>
               반복수
-              <input id="strengthReps" type="number" min="1" step="1" required />
+              <input id="strengthReps" type="number" min="1" step="1" placeholder="5" required />
             </label>
+          </div>
+          <div class="calc-strip">
+            <span>자동 계산 · e1RM</span>
+            <strong id="e1rmPreview">-</strong>
           </div>
           <div class="form-row">
             <label>
@@ -159,6 +182,25 @@
       </section>
 
     </main>
+
+    <nav class="view-tabs" aria-label="화면 선택">
+      <button class="active" type="button" data-view-tab="search" aria-label="검색">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M20 20l-4-4"></path></svg>
+        <span>검색</span>
+      </button>
+      <button type="button" data-view-tab="weights" aria-label="중량별">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V5"></path><path d="M5 19h14"></path><path d="M9 16v-5"></path><path d="M13 16V8"></path><path d="M17 16v-3"></path></svg>
+        <span>중량별</span>
+      </button>
+      <button type="button" data-view-tab="cycle" aria-label="사이클">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v3"></path><path d="M17 4v3"></path><path d="M5 8h14"></path><path d="M6 5h12a1 1 0 0 1 1 1v13H5V6a1 1 0 0 1 1-1z"></path><path d="M8 13h2"></path><path d="M12 13h2"></path><path d="M16 13h2"></path></svg>
+        <span>사이클</span>
+      </button>
+      <button type="button" data-view-tab="input" aria-label="입력">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+        <span>입력</span>
+      </button>
+    </nav>
 
     <script src="./app.js"></script>
   </body>
