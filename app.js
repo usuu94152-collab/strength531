@@ -165,8 +165,8 @@ async function refreshSheetData() {
   try {
     const results = await Promise.all(
       LIFT_SHEETS.map(async (sheetName) => {
-        const csv = await fetchCsv(sheetName);
-        return parseCsv(csv)
+        const rows = await fetchSheetRows(sheetName);
+        return rows
           .map((row) => normalizeSheetRow(row, sheetName))
           .filter(Boolean);
       }),
@@ -181,64 +181,74 @@ async function refreshSheetData() {
   }
 }
 
-async function fetchCsv(sheetName) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
-    sheetName,
-  )}`;
-  const response = await fetch(url);
+function fetchSheetRows(sheetName) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `__strengthLogSheet_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement("script");
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`${sheetName} 응답 지연`));
+    }, 12000);
 
-  if (!response.ok) {
-    throw new Error(`${sheetName} ${response.status}`);
-  }
+    function cleanup() {
+      window.clearTimeout(timeout);
+      delete window[callbackName];
+      script.remove();
+    }
 
-  return response.text();
+    window[callbackName] = (response) => {
+      cleanup();
+      if (response.status !== "ok") {
+        reject(new Error(`${sheetName} ${response.status || "조회 실패"}`));
+        return;
+      }
+      resolve(parseGvizTable(response.table));
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error(`${sheetName} 스크립트 로드 실패`));
+    };
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:${callbackName}&sheet=${encodeURIComponent(
+      sheetName,
+    )}`;
+    document.body.appendChild(script);
+  });
 }
 
-function parseCsv(csv) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < csv.length; index += 1) {
-    const char = csv[index];
-    const next = csv[index + 1];
-
-    if (char === '"' && inQuotes && next === '"') {
-      field += '"';
-      index += 1;
-    } else if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === "," && !inQuotes) {
-      row.push(field);
-      field = "";
-    } else if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") {
-        index += 1;
-      }
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-    } else {
-      field += char;
-    }
-  }
-
-  if (field || row.length) {
-    row.push(field);
-    rows.push(row);
-  }
-
-  const headers = rows.shift() || [];
-  return rows
-    .filter((values) => values.some((value) => value.trim()))
-    .map((values) =>
+function parseGvizTable(table) {
+  const headers = (table?.cols || []).map((column) => column.label);
+  return (table?.rows || [])
+    .map((row) =>
       headers.reduce((record, header, index) => {
-        record[header.trim()] = (values[index] || "").trim();
+        record[header] = normalizeGvizCell(row.c?.[index]);
         return record;
       }, {}),
-    );
+    )
+    .filter((record) => Object.values(record).some((value) => value !== ""));
+}
+
+function normalizeGvizCell(cell) {
+  if (!cell) {
+    return "";
+  }
+  if (cell.f) {
+    return cell.f;
+  }
+  if (typeof cell.v === "string" && cell.v.startsWith("Date(")) {
+    return formatGvizDate(cell.v);
+  }
+  return cell.v ?? "";
+}
+
+function formatGvizDate(value) {
+  const parts = value.match(/\d+/g)?.map(Number);
+  if (!parts || parts.length < 3) {
+    return value;
+  }
+
+  const [year, zeroBasedMonth, day] = parts;
+  return `${year}-${String(zeroBasedMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function normalizeSheetRow(row, sheetName) {
@@ -395,9 +405,10 @@ function renderSummary(records) {
   renderBestLift("deadlift", bestByLift.Deadlift, firstByLift.Deadlift);
 
   const latest = records[0];
-  $("#latestRecord").textContent = latest
-    ? `${formatShortDate(latest.date)} ${shortMovement(latest.movement)}`
-    : "-";
+  setText(
+    "#latestRecord",
+    latest ? `${formatShortDate(latest.date)} ${shortMovement(latest.movement)}` : "-",
+  );
 }
 
 function renderBestLift(prefix, record, firstRecord) {
