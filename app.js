@@ -7,7 +7,11 @@ const VIEW_META = {
   weights: { eyebrow: "기록 · BY WEIGHT", title: "중량별" },
   cycle: { eyebrow: "사이클 · TM", title: "중량표" },
   input: { eyebrow: "새 기록 · NEW ENTRY", title: "기록 추가" },
+  convert: { eyebrow: "환산 · KG ↔ LB", title: "단위 환산" },
 };
+const KG_TO_LB = 0.45359237;
+const CONVERT_KG_PRESETS = [20, 40, 60, 80, 100, 120, 140, 160];
+const CONVERT_LB_PRESETS = [45, 95, 135, 185, 225, 315, 405, 495];
 const TOP_SET_PERCENTAGES = [85, 90, 95];
 const FSL_RULES = {
   85: "70% x 5x10",
@@ -44,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   applyInitialFilters();
   updateSearchStep();
+  renderConvertPresets();
   refreshSheetData();
   render();
 });
@@ -62,6 +67,9 @@ function bindEvents() {
   $("#strengthWeight").addEventListener("input", renderE1rmPreview);
   $("#strengthReps").addEventListener("input", renderE1rmPreview);
   $("#strengthForm").addEventListener("submit", addStrengthRecord);
+
+  $("#convertKg").addEventListener("input", () => syncConvert("kg"));
+  $("#convertLb").addEventListener("input", () => syncConvert("lb"));
 
   $$("[data-view-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -119,7 +127,7 @@ function applyInitialFilters() {
 
   if (view === "crossfit") {
     setActiveView("search");
-  } else if (["search", "weights", "cycle", "input"].includes(view)) {
+  } else if (["search", "weights", "cycle", "input", "convert"].includes(view)) {
     setActiveView(view);
   }
 }
@@ -806,6 +814,63 @@ function renderE1rmPreview() {
   $("#e1rmPreview").textContent = weight && reps ? formatKg(roundOne(weight * (1 + reps / 30))) : "-";
 }
 
+function syncConvert(source) {
+  const kgInput = $("#convertKg");
+  const lbInput = $("#convertLb");
+  if (!kgInput || !lbInput) {
+    return;
+  }
+
+  if (source === "lb") {
+    const raw = lbInput.value.trim();
+    kgInput.value = raw === "" ? "" : String(roundTwo(toNumber(raw) * KG_TO_LB));
+  } else {
+    const raw = kgInput.value.trim();
+    lbInput.value = raw === "" ? "" : String(roundTwo(toNumber(raw) / KG_TO_LB));
+  }
+}
+
+function renderConvertPresets() {
+  const kgWrap = $("#convertKgPresets");
+  const lbWrap = $("#convertLbPresets");
+
+  if (kgWrap) {
+    kgWrap.innerHTML = CONVERT_KG_PRESETS.map(
+      (kg) => `
+        <button class="preset-chip" type="button" data-preset-kg="${kg}">
+          <strong>${kg}<span>kg</span></strong>
+          <em>${roundOne(kg / KG_TO_LB)} lb</em>
+        </button>
+      `,
+    ).join("");
+  }
+
+  if (lbWrap) {
+    lbWrap.innerHTML = CONVERT_LB_PRESETS.map(
+      (lb) => `
+        <button class="preset-chip" type="button" data-preset-lb="${lb}">
+          <strong>${lb}<span>lb</span></strong>
+          <em>${roundOne(lb * KG_TO_LB)} kg</em>
+        </button>
+      `,
+    ).join("");
+  }
+
+  $$("[data-preset-kg]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("#convertKg").value = button.dataset.presetKg;
+      syncConvert("kg");
+    });
+  });
+
+  $$("[data-preset-lb]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("#convertLb").value = button.dataset.presetLb;
+      syncConvert("lb");
+    });
+  });
+}
+
 function toNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -813,6 +878,10 @@ function toNumber(value) {
 
 function roundOne(value) {
   return Math.round(value * 10) / 10;
+}
+
+function roundTwo(value) {
+  return Math.round(value * 100) / 100;
 }
 
 function roundTrainingWeight(value) {

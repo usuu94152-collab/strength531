@@ -141,13 +141,15 @@ h3 {
 
 .search-panel.app-view.active,
 .cycle-view.app-view.active,
-.e1rm-view.app-view.active {
+.e1rm-view.app-view.active,
+.convert-view.app-view.active {
   display: grid;
 }
 
 .search-panel,
 .cycle-view,
 .e1rm-view,
+.convert-view,
 .records-panel,
 .input-panel {
   gap: 14px;
@@ -997,12 +999,136 @@ textarea {
   opacity: 0.6;
 }
 
+.convert-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+}
+
+.convert-card {
+  gap: 6px;
+}
+
+.convert-input-row {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+}
+
+.convert-input-row input {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 38px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1;
+  min-height: 44px;
+  padding: 0;
+  width: 100%;
+}
+
+.convert-input-row input::placeholder {
+  color: #9aa1ad;
+  opacity: 1;
+}
+
+.convert-input-row input:focus {
+  background: transparent;
+  border-color: transparent;
+  outline: 0;
+}
+
+.convert-input-row > span {
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.convert-equals {
+  color: var(--ink-3);
+  display: flex;
+  justify-content: center;
+  padding: 2px 0;
+}
+
+.convert-equals svg {
+  height: 20px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2;
+  width: 20px;
+}
+
+.convert-formula {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.convert-presets {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.preset-chip {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  min-height: 60px;
+  padding: 9px 4px;
+}
+
+.preset-chip:hover {
+  background: var(--row-pr);
+  border-color: #f1deaa;
+}
+
+.preset-chip strong {
+  align-items: baseline;
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  gap: 2px;
+  letter-spacing: -0.5px;
+}
+
+.preset-chip strong span {
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.preset-chip em {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
 .view-tabs {
   background: var(--bg);
   border-top: 1px solid var(--line);
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   left: 0;
   padding: 8px 0 6px;
   position: fixed;
