@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Strength Log</title>
-    <link rel="stylesheet" href="./styles.css?v=20260603-4" />
+    <link rel="stylesheet" href="./styles.css?v=20260705-1" />
   </head>
   <body>
     <header class="app-header">
@@ -181,6 +181,51 @@
         </form>
       </section>
 
+      <section class="app-view convert-view" data-view="convert">
+        <div class="panel-heading">
+          <h2>단위 환산</h2>
+          <p>kg ↔ lb 실시간 변환. 한쪽에 입력하면 자동으로 계산됩니다.</p>
+        </div>
+
+        <div class="convert-grid">
+          <label class="search-card convert-card">
+            <span class="search-card-top">
+              <span>KG · 킬로그램</span>
+            </span>
+            <div class="convert-input-row">
+              <input id="convertKg" type="number" min="0" step="0.5" inputmode="decimal" placeholder="0" aria-label="킬로그램 입력" />
+              <span>kg</span>
+            </div>
+          </label>
+
+          <div class="convert-equals" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 9h14"></path><path d="M5 15h14"></path></svg>
+          </div>
+
+          <label class="search-card convert-card">
+            <span class="search-card-top">
+              <span>LB · 파운드</span>
+            </span>
+            <div class="convert-input-row">
+              <input id="convertLb" type="number" min="0" step="1" inputmode="decimal" placeholder="0" aria-label="파운드 입력" />
+              <span>lb</span>
+            </div>
+          </label>
+        </div>
+
+        <p class="convert-formula">1 kg = 2.20462 lb · 1 lb = 0.453592 kg</p>
+
+        <div class="section-header">
+          <h3>빠른 값 · KG</h3>
+        </div>
+        <div id="convertKgPresets" class="convert-presets"></div>
+
+        <div class="section-header">
+          <h3>빠른 값 · LB</h3>
+        </div>
+        <div id="convertLbPresets" class="convert-presets"></div>
+      </section>
+
     </main>
 
     <nav class="view-tabs" aria-label="화면 선택">
@@ -200,8 +245,12 @@
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
         <span>입력</span>
       </button>
+      <button type="button" data-view-tab="convert" aria-label="환산">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="M4 8h13"></path><path d="M14 5l3 3-3 3"></path><path d="M20 16H7"></path><path d="M10 13l-3 3 3 3"></path></svg>
+        <span>환산</span>
+      </button>
     </nav>
 
-    <script src="./app.js?v=20260603-4"></script>
+    <script src="./app.js?v=20260705-1"></script>
   </body>
 </html>
