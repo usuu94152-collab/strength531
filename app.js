@@ -264,10 +264,12 @@ function normalizeSheetRow(row, sheetName) {
   const movement = row["종목"] || sheetName;
   const weight = toNumber(row["중량(kg)"]);
   const reps = toNumber(row["반복수"]);
-  const e1rm = toNumber(row["추정1RM(kg)"]);
+  const e1rm =
+    toNumber(row["추정1RM(kg)"]) ||
+    (weight > 0 && reps > 0 ? roundOne(weight * (1 + reps / 30)) : 0);
   const tm = toNumber(row["TM(kg)"]);
 
-  if (!date || !movement || !e1rm) {
+  if (!date || !movement || !weight || !reps || !e1rm) {
     return null;
   }
 
