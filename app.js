@@ -19,6 +19,7 @@ const FSL_RULES = {
   95: "60-65% x 5x8-10",
 };
 const TM_STORAGE_KEY = "strength-log-tm-overrides";
+const UNDATED_SORT_KEY = "9999-12-31";
 const WAVE_PLAN = {
   1: { early: 85, late: 90 },
   2: { early: 95, late: 85 },
@@ -175,7 +176,7 @@ async function refreshSheetData() {
       LIFT_SHEETS.map(async (sheetName) => {
         const rows = await fetchSheetRows(sheetName);
         return rows
-          .map((row) => normalizeSheetRow(row, sheetName))
+          .map((row, index) => normalizeSheetRow(row, sheetName, index))
           .filter(Boolean);
       }),
     );
@@ -259,28 +260,25 @@ function formatGvizDate(value) {
   return `${year}-${String(zeroBasedMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function normalizeSheetRow(row, sheetName) {
-  const date = row["날짜"];
+function normalizeSheetRow(row, sheetName, index) {
+  const date = String(row["날짜"] || "").trim();
   const movement = row["종목"] || sheetName;
   const weight = toNumber(row["중량(kg)"]);
   const reps = toNumber(row["반복수"]);
-  const e1rm =
-    toNumber(row["추정1RM(kg)"]) ||
-    (weight > 0 && reps > 0 ? roundOne(weight * (1 + reps / 30)) : 0);
-  const tm = toNumber(row["TM(kg)"]);
 
-  if (!date || !movement || !weight || !reps || !e1rm) {
+  if (!movement || weight <= 0 || reps <= 0) {
     return null;
   }
 
   return {
-    id: `sheet-${movement}-${date}-${weight}-${reps}-${e1rm}`,
+    id: `sheet-${sheetName}-${index}`,
     date,
+    sortDate: date || UNDATED_SORT_KEY,
     movement,
     weight,
     reps,
-    e1rm,
-    tm,
+    e1rm: toNumber(row["추정1RM(kg)"]) || estimateE1rm(weight, reps),
+    tm: toNumber(row["TM(kg)"]),
     note: row["메모"] || "",
     source: "sheet",
   };
@@ -298,7 +296,7 @@ async function addStrengthRecord(event) {
     movement: $("#strengthMovement").value,
     weight,
     reps,
-    e1rm: roundOne(weight * (1 + reps / 30)),
+    e1rm: estimateE1rm(weight, reps),
     tm: toNumber($("#strengthTm").value),
     note: $("#strengthNote").value.trim(),
     source: "app",
@@ -368,7 +366,7 @@ function render() {
 }
 
 function getStrengthRecords() {
-  return [...state.sheetRecords].sort((a, b) => b.date.localeCompare(a.date));
+  return [...state.sheetRecords].sort((a, b) => b.sortDate.localeCompare(a.sortDate));
 }
 
 function getSearchValue() {
@@ -398,7 +396,7 @@ function getSearchResults(records) {
     .sort((a, b) => {
       const diffA = Math.abs(a.weight - target);
       const diffB = Math.abs(b.weight - target);
-      return diffA - diffB || b.date.localeCompare(a.date);
+      return diffA - diffB || b.sortDate.localeCompare(a.sortDate);
     });
 }
 
@@ -447,7 +445,7 @@ function getBestRecord(records, lift) {
 function getFirstRecord(records, lift) {
   return records
     .filter((record) => record.movement === lift && record.e1rm)
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
+    .sort((a, b) => a.sortDate.localeCompare(b.sortDate))[0];
 }
 
 function renderCycleBanner(records) {
@@ -506,7 +504,7 @@ function renderCycleWeights(records) {
     const tmSource = overrideTm
       ? "앱에서 수정한 TM"
       : tmRecord
-        ? `${formatDotDate(tmRecord.date)} TM 기준`
+        ? `${tmRecord.date ? formatDotDate(tmRecord.date) : "최근"} TM 기준`
         : "TM 기록 없음";
     const percentages = TOP_SET_PERCENTAGES.map((item) => {
       const weight = roundTrainingWeight(tm * (item / 100));
@@ -590,7 +588,7 @@ function getLatestTmByLift(records) {
       lift,
       records
         .filter((record) => record.movement === lift && record.tm)
-        .sort((a, b) => b.date.localeCompare(a.date))[0],
+        .sort((a, b) => b.sortDate.localeCompare(a.sortDate))[0],
     ]),
   );
 }
@@ -645,7 +643,7 @@ function getPrRecordIds(records) {
   const ids = new Set();
 
   [...records]
-    .sort((a, b) => a.date.localeCompare(b.date))
+    .sort((a, b) => a.sortDate.localeCompare(b.sortDate))
     .forEach((record) => {
       const best = bestByLift[record.movement] || 0;
       if ((record.e1rm || 0) > best) {
@@ -686,7 +684,9 @@ function renderSearchSummary(selectedRecords, searchedRecords) {
         {
           label: "최근 수행",
           value: latest ? formatDisplayWeight(latest.weight, searchUnit) : "-",
-          detail: latest ? `${latest.reps || "-"}회 · ${latest.date} · 검색 ${records.length}개` : "기록 없음",
+          detail: latest
+            ? `${latest.reps || "-"}회 · ${latest.date || "날짜 없음"} · 검색 ${records.length}개`
+            : "기록 없음",
         },
         {
           label: searchUnit === "lb" ? "킬로그램 환산" : "파운드 환산",
@@ -703,7 +703,7 @@ function renderSearchSummary(selectedRecords, searchedRecords) {
         {
           label: "최근 수행",
           value: latest ? formatDisplayWeight(latest.weight, searchUnit) : "-",
-          detail: latest ? `${latest.reps || "-"}회 · ${latest.date}` : "기록 없음",
+          detail: latest ? `${latest.reps || "-"}회 · ${latest.date || "날짜 없음"}` : "기록 없음",
         },
       ];
 
@@ -813,7 +813,7 @@ function renderConversionHint() {
 function renderE1rmPreview() {
   const weight = toNumber($("#strengthWeight").value);
   const reps = toNumber($("#strengthReps").value);
-  $("#e1rmPreview").textContent = weight && reps ? formatKg(roundOne(weight * (1 + reps / 30))) : "-";
+  $("#e1rmPreview").textContent = formatKg(estimateE1rm(weight, reps));
 }
 
 function syncConvert(source) {
@@ -878,6 +878,10 @@ function toNumber(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function estimateE1rm(weight, reps) {
+  return weight > 0 && reps > 0 ? roundOne(weight * (1 + reps / 30)) : 0;
+}
+
 function roundOne(value) {
   return Math.round(value * 10) / 10;
 }
@@ -933,11 +937,11 @@ function lbToKg(value) {
 }
 
 function formatShortDate(value) {
-  return value.slice(5).replace("-", ".");
+  return value ? value.slice(5).replace("-", ".") : "-";
 }
 
 function formatDotDate(value) {
-  return value.replaceAll("-", ".");
+  return value ? value.replaceAll("-", ".") : "-";
 }
 
 function shortMovement(value) {
